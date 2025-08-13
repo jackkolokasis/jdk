@@ -175,7 +175,9 @@ void G1Policy::record_new_heap_size(uint new_number_of_regions) {
 uint G1Policy::calculate_desired_eden_length_by_mmu() const {
   assert(use_adaptive_young_list_length(), "precondition");
   double now_sec = os::elapsedTime();
+  // fprintf(stderr, "now_sec = %lf\n", now_sec);
   double when_ms = _mmu_tracker->when_max_gc_sec(now_sec) * 1000.0;
+  // fprintf(stderr, "now_sec = %lf | when_ms = %lf\n", now_sec, when_ms);
   double alloc_rate_ms = _analytics->predict_alloc_rate_ms();
   return (uint) ceil(alloc_rate_ms * when_ms);
 }
@@ -278,6 +280,10 @@ uint G1Policy::calculate_young_desired_length(size_t pending_cards,
     // goal, as the default value has been chosen to effectively disable it.
     uint desired_eden_length = MAX2(desired_eden_length_by_pause,
                                     desired_eden_length_by_mmu);
+
+    // fprintf(stderr, "by_pause = %u | by_mmu = %u | max_is_by_pause = %d\n",
+    //         desired_eden_length_by_pause, desired_eden_length_by_mmu,
+    //         desired_eden_length == desired_eden_length_by_pause);
 
     desired_young_length = desired_eden_length + survivor_length;
   } else {
@@ -667,6 +673,10 @@ bool G1Policy::should_retain_evac_failed_region(uint index) const {
   size_t live_bytes = _g1h->region_at(index)->live_bytes();
   size_t threshold = G1RetainRegionLiveThresholdPercent * G1HeapRegion::GrainBytes / 100;
   return live_bytes < threshold;
+}
+
+G1IHOPControl* G1Policy::get_ihop_control() const {
+  return _ihop_control;
 }
 
 void G1Policy::record_pause_start_time() {

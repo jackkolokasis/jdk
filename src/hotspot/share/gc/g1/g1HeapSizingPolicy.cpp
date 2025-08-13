@@ -436,3 +436,67 @@ size_t G1HeapSizingPolicy::full_collection_resize_amount(bool& expand, size_t al
   expand = true; // Does not matter.
   return 0;
 }
+
+size_t G1HeapSizingPolicy::flexheap_resize_amount(size_t allocation_word_size, bool should_expand) {
+  assert(GCTimeRatio > 0, "must be");
+
+  const double long_term_gc_cpu_usage = _analytics->long_term_pause_time_ratio();
+  const double short_term_gc_cpu_usage = _analytics->short_term_pause_time_ratio();
+
+  double gc_cpu_usage_target = 1.0 / (1.0 + GCTimeRatio);
+  gc_cpu_usage_target = scale_with_heap(gc_cpu_usage_target);
+
+  // Calculate gc_cpu_usage acceptable deviation thresholds:
+  // - upper_threshold, do not want to exceed this.
+  // - lower_threshold, we do not want to go below.
+  const double gc_cpu_usage_margin = G1CPUUsageDeviationPercent / 100.0;
+  const double upper_threshold = gc_cpu_usage_target * (1 + gc_cpu_usage_margin);
+  const double lower_threshold = gc_cpu_usage_target * (1 - gc_cpu_usage_margin);
+
+  // Decide to expand/shrink based on how far the current GC CPU usage deviates
+  // from the target. This allows the policy to respond more quickly to GC pressure
+  // when the heap is small relative to the maximum heap.
+  const double long_term_delta = rel_diff(long_term_gc_cpu_usage, gc_cpu_usage_target);
+  const double short_term_delta = rel_diff(short_term_gc_cpu_usage, gc_cpu_usage_target);
+
+  // Ignore very first sample as it is garbage.
+  if (_long_term_count != 0 || _recent_cpu_usage_deltas.num() != 0) {
+    _recent_cpu_usage_deltas.add(short_term_delta);
+  }
+  _long_term_count++;
+
+
+  size_t resize_bytes = 0;
+
+  const bool use_long_term_delta = (_long_term_count == long_term_count_limit());
+  const double avg_short_term_delta = _recent_cpu_usage_deltas.avg();
+
+  double delta;
+  if (use_long_term_delta) {
+    // For expansion, deltas are positive, and we want to expand aggressively.
+    // For shrinking, deltas are negative, so the MAX2 below selects the least
+    // aggressive one as we are using the absolute value for scaling.
+    delta = MAX2(avg_short_term_delta, long_term_delta);
+  } else {
+    delta = avg_short_term_delta;
+  }
+  // Delta is negative when shrinking, but the calculation of the resize amount
+  // always expects an absolute value. Do that here unconditionally.
+  delta = fabsd(delta);
+
+  if (should_expand) {
+    // Short-cut calculation if already at maximum capacity.
+    if (_g1h->capacity() == _g1h->max_capacity()) {
+      reset_cpu_usage_tracking_data();
+      return resize_bytes;
+    }
+
+    resize_bytes = young_collection_expand_amount(delta);
+    reset_cpu_usage_tracking_data();
+    return resize_bytes;
+  }
+
+  resize_bytes = young_collection_shrink_amount(delta, allocation_word_size);
+  reset_cpu_usage_tracking_data();
+  return resize_bytes;
+}

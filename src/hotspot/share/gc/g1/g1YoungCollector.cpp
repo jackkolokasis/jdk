@@ -26,6 +26,7 @@
 #include "classfile/classLoaderDataGraph.inline.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "compiler/oopMap.hpp"
+#include "gc/flexHeap/flexHeap.hpp"
 #include "gc/g1/g1Allocator.hpp"
 #include "gc/g1/g1CardSetMemory.hpp"
 #include "gc/g1/g1CollectedHeap.inline.hpp"
@@ -1059,7 +1060,12 @@ void G1YoungCollector::post_evacuate_collection_set(G1EvacInfo* evacuation_info,
 
   _g1h->gc_epilogue(false);
 
-  _g1h->resize_heap_after_young_collection(_allocation_word_size);
+  if (EnableFlexHeap) {
+    Universe::flexHeap()->get_cpu_usage()->register_stw_gc_ellapsed_time();
+    Universe::flexHeap()->dram_repartition(_allocation_word_size);
+  } else {
+    _g1h->resize_heap_after_young_collection(_allocation_word_size);
+  }
 }
 
 bool G1YoungCollector::evacuation_failed() const {

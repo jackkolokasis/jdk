@@ -25,6 +25,7 @@
 #ifndef SHARE_GC_G1_G1COLLECTEDHEAP_HPP
 #define SHARE_GC_G1_G1COLLECTEDHEAP_HPP
 
+#include "gc/flexHeap/flexEnum.h"
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BiasedArray.hpp"
 #include "gc/g1/g1CardSet.hpp"
@@ -570,6 +571,7 @@ public:
 
   void resize_heap_after_young_collection(size_t allocation_word_size);
   void resize_heap_after_full_collection(size_t allocation_word_size);
+  void flexheap_resize_heap(size_t allocation_word_size, fh_actions cur_action);
 
   // Check if there is memory to uncommit and if so schedule a task to do it.
   void uncommit_regions_if_necessary();

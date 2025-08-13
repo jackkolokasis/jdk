@@ -377,6 +377,8 @@ public:
   }
   bool should_retain_evac_failed_region(uint index) const;
 
+  G1IHOPControl* get_ihop_control() const;
+
 private:
   //
   // Survivor regions policy.

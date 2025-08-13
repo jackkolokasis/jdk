@@ -44,6 +44,7 @@ class CollectedHeap;
 class DeferredObjAllocEvent;
 class OopStorage;
 class SerializeClosure;
+class FlexHeap;
 
 class Universe: AllStatic {
   // Ugh.  Universe is much too friendly.
@@ -113,6 +114,9 @@ class Universe: AllStatic {
 
   // The particular choice of collected heap.
   static CollectedHeap* _collectedHeap;
+
+  // FlexHeap resizing policy
+  static FlexHeap *_flexHeap;
 
   static intptr_t _non_oop_bits;
 
@@ -295,6 +299,9 @@ class Universe: AllStatic {
 
   // The particular choice of collected heap.
   static CollectedHeap* heap() { return _collectedHeap; }
+
+  // Accessor of flexHeap
+  static FlexHeap *flexHeap() { return _flexHeap; }
 
   DEBUG_ONLY(static bool is_stw_gc_active();)
   DEBUG_ONLY(static bool is_in_heap(const void* p);)

@@ -107,6 +107,10 @@ public:
   // should by expanded by that amount, shrunk otherwise.
   size_t full_collection_resize_amount(bool& expand, size_t allocation_word_size);
 
+  // Return by how many bytes the heap should be expand based on recent GC CPU
+  // usage and I/O wait time after each STW GC..
+  size_t flexheap_resize_amount(size_t allocation_word_size, bool should_expand);
+
   static G1HeapSizingPolicy* create(const G1CollectedHeap* g1h, const G1Analytics* analytics);
 };
 

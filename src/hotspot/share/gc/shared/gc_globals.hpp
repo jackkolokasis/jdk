@@ -552,7 +552,17 @@
   product(uint, GCCardSizeInBytes, 512,                                     \
           "Card table entry size (in bytes) for card based collectors")     \
           range(128, NOT_LP64(512) LP64_ONLY(1024))                         \
-          constraint(GCCardSizeInBytesConstraintFunc,AtParse)
+          constraint(GCCardSizeInBytesConstraintFunc,AtParse)               \
+                                                                            \
+  product(bool, EnableFlexHeap, false,                                      \
+          "Enable FlexHeap resizing policy for G1GC")                       \
+								                                                            \
+  product(uintx, FlexDRAMLimit, 0,                                          \
+          "Total size of DRAM budget (in bytes)")                           \
+								                                                            \
+  product(ccstr, FlexResizingPolicy, "simple_wait",                         \
+          "simple_wait: Take decisions using only application delay "       \
+          "optimal_state: Experimental policy ")
   // end of GC_FLAGS
 
 DECLARE_FLAGS(GC_FLAGS)

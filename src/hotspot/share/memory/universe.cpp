@@ -39,6 +39,7 @@
 #include "code/codeBehaviours.hpp"
 #include "code/codeCache.hpp"
 #include "compiler/oopMap.hpp"
+#include "gc/flexHeap/flexHeap.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
 #include "gc/shared/gcArguments.hpp"
 #include "gc/shared/gcConfig.hpp"
@@ -186,6 +187,7 @@ OopStorage*     Universe::_vm_weak = nullptr;
 OopStorage*     Universe::_vm_global = nullptr;
 
 CollectedHeap*  Universe::_collectedHeap = nullptr;
+FlexHeap *Universe::_flexHeap = NULL;
 
 // These are the exceptions that are always created and are guatanteed to exist.
 // If possible, they can be stored as CDS archived objects to speed up AOT code.
@@ -934,6 +936,12 @@ jint Universe::initialize_heap() {
   _collectedHeap = GCConfig::arguments()->create_heap();
 
   log_info(gc)("Using %s", _collectedHeap->name());
+
+  if (EnableFlexHeap) {
+    _flexHeap = new FlexHeap();
+    log_info(gc)("Initialize FlexHeap");
+  }
+
   return _collectedHeap->initialize();
 }
 

@@ -24,6 +24,7 @@
 
 #include "classfile/classLoaderData.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
+#include "gc/flexHeap/flexHeap.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BatchedTask.hpp"
 #include "gc/g1/g1CardSetMemory.hpp"
@@ -976,6 +977,10 @@ public:
   void work(uint worker_id) {
     ResourceMark rm;
 
+    if (EnableFlexHeap) {
+      Universe::flexHeap()->get_cpu_usage()->read_gc_conc_thr_cpu_time(worker_id, true /*start*/);
+    }
+
     SuspendibleThreadSetJoiner sts_join;
 
     assert(worker_id < _cm->active_tasks(), "invariant");
@@ -992,6 +997,9 @@ public:
       } while (!_cm->has_aborted() && task->has_aborted());
     }
     task->record_end_time();
+    if (EnableFlexHeap) {
+      Universe::flexHeap()->get_cpu_usage()->read_gc_conc_thr_cpu_time(worker_id, false /*stop*/);
+    }
     guarantee(!task->has_aborted() || _cm->has_aborted(), "invariant");
   }
 
@@ -1051,11 +1059,18 @@ public:
     WorkerTask("G1 Root Region Scan"), _cm(cm) { }
 
   void work(uint worker_id) {
+    if (EnableFlexHeap) {
+      Universe::flexHeap()->get_cpu_usage()->read_gc_conc_thr_cpu_time(worker_id, true /*start*/);
+    }
     G1CMRootMemRegions* root_regions = _cm->root_regions();
     const MemRegion* region = root_regions->claim_next();
     while (region != nullptr) {
       _cm->scan_root_region(region, worker_id);
       region = root_regions->claim_next();
+    }
+
+    if (EnableFlexHeap) {
+      Universe::flexHeap()->get_cpu_usage()->read_gc_conc_thr_cpu_time(worker_id, false /*stop*/);
     }
   }
 };
@@ -1106,6 +1121,10 @@ void G1ConcurrentMark::concurrent_cycle_start() {
   _gc_tracer_cm->report_gc_start(GCCause::_no_gc /* first parameter is not used */, _gc_timer_cm->gc_start());
 
   _g1h->trace_heap_before_gc(_gc_tracer_cm);
+
+  if (EnableFlexHeap) {
+    Universe::flexHeap()->get_cpu_usage()->read_gc_conc_thr_cpu_time(ConcGCThreads, true /* start stats */);
+  }
 }
 
 uint G1ConcurrentMark::completed_mark_cycles() const {
@@ -1129,6 +1148,10 @@ void G1ConcurrentMark::concurrent_cycle_end(bool mark_cycle_completed) {
   _gc_timer_cm->register_gc_end();
 
   _gc_tracer_cm->report_gc_end(_gc_timer_cm->gc_end(), _gc_timer_cm->time_partitions());
+
+  if (EnableFlexHeap) {
+    Universe::flexHeap()->get_cpu_usage()->read_gc_conc_thr_cpu_time(ConcGCThreads, false /* end stats*/);
+  }
 }
 
 void G1ConcurrentMark::mark_from_roots() {
@@ -1384,6 +1407,11 @@ void G1ConcurrentMark::remark() {
 
   double start = os::elapsedTime();
 
+  if (EnableFlexHeap) {
+    Universe::flexHeap()->record_stw_entry();
+  }
+
+
   verify_during_pause(G1HeapVerifier::G1VerifyRemark, VerifyLocation::RemarkBefore);
 
   {
@@ -1454,8 +1482,13 @@ void G1ConcurrentMark::remark() {
     // resizing based on MinHeapFreeRatio or MaxHeapFreeRatio. If a PeriodicGC is
     // triggered, it likely means there are very few regular GCs, making resizing
     // based on gc heuristics less effective.
-    if (_g1h->last_gc_was_periodic()) {
+    if (!EnableFlexHeap && _g1h->last_gc_was_periodic()) {
       _g1h->resize_heap_after_full_collection(0 /* allocation_word_size */);
+    }
+
+    if (EnableFlexHeap) {
+      Universe::flexHeap()->get_cpu_usage()->register_stw_gc_ellapsed_time(false /* not a cleanup phase */);
+      Universe::flexHeap()->dram_repartition(0, true /* remark phase */);
     }
 
     compute_new_sizes();
@@ -1482,6 +1515,11 @@ void G1ConcurrentMark::remark() {
     // Clear the marking state because we will be restarting
     // marking due to overflowing the global mark stack.
     reset_marking_for_restart();
+
+    if (EnableFlexHeap) {
+      Universe::flexHeap()->get_cpu_usage()->register_stw_gc_ellapsed_time(false /* not a cleanup phase */);
+      Universe::flexHeap()->dram_repartition(0, true /* remark phase */);
+    }
   }
 
   // Statistics

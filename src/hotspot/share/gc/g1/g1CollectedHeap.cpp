@@ -27,6 +27,7 @@
 #include "classfile/systemDictionary.hpp"
 #include "code/codeCache.hpp"
 #include "compiler/oopMap.hpp"
+#include "gc/flexHeap/flexHeap.hpp"
 #include "gc/g1/g1Allocator.inline.hpp"
 #include "gc/g1/g1Arguments.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
@@ -913,6 +914,34 @@ void G1CollectedHeap::resize_heap_after_young_collection(size_t allocation_word_
   phase_times()->record_resize_heap_time((Ticks::now() - start).seconds() * 1000.0);
 }
 
+void G1CollectedHeap::flexheap_resize_heap(size_t allocation_word_size, fh_actions cur_action) {
+  bool should_expand;
+  size_t resize_bytes = 0;
+
+  switch (cur_action) {
+    case FH_SHRINK_HEAP:
+      should_expand = false;
+      resize_bytes = _heap_sizing_policy->flexheap_resize_amount(allocation_word_size, should_expand);
+      break;
+    case FH_GROW_HEAP:
+      should_expand = true;
+      resize_bytes = _heap_sizing_policy->flexheap_resize_amount(allocation_word_size, should_expand);
+      break;
+    default:
+      break;
+  }
+
+  // tty->print(", Cur Size = %lu | Resize Bytes = %lu ", capacity(), resize_bytes);
+
+  if (resize_bytes != 0) {
+    resize_heap(resize_bytes, should_expand);
+  }
+
+  // tty->print("| New Size = %lu\n", capacity());
+  // tty->flush();
+
+}
+
 HeapWord* G1CollectedHeap::satisfy_failed_allocation_helper(size_t word_size,
                                                             bool do_gc,
                                                             bool maximal_compaction,
@@ -1518,6 +1547,9 @@ void G1CollectedHeap::stop() {
   _cr->stop();
   _service_thread->stop();
   _cm_thread->stop();
+  if (EnableFlexHeap) {
+    delete(Universe::flexHeap());
+  }
 }
 
 void G1CollectedHeap::safepoint_synchronize_begin() {
@@ -2567,6 +2599,14 @@ void G1CollectedHeap::do_collection_pause_at_safepoint_helper(size_t allocation_
   SvcGCMarker sgcm(SvcGCMarker::MINOR);
 
   GCTraceCPUTime tcpu(_gc_tracer_stw);
+
+  if (EnableFlexHeap) {
+    Universe::flexHeap()->record_stw_entry();
+
+    if (gc_cause() == GCCause::_g1_periodic_collection) {
+      policy()->collector_state()->set_initiate_conc_mark_if_possible(false);
+    }
+  }
 
   _bytes_used_during_gc = 0;
 

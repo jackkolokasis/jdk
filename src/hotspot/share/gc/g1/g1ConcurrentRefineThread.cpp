@@ -23,10 +23,12 @@
  */
 
 #include "gc/g1/g1BarrierSet.hpp"
+#include "gc/flexHeap/flexHeap.hpp"
 #include "gc/g1/g1ConcurrentRefine.hpp"
 #include "gc/g1/g1ConcurrentRefineStats.hpp"
 #include "gc/g1/g1ConcurrentRefineThread.hpp"
 #include "gc/g1/g1DirtyCardQueue.hpp"
+#include "gc/shared/gc_globals.hpp"
 #include "gc/shared/suspendibleThreadSet.hpp"
 #include "logging/log.hpp"
 #include "runtime/cpuTimeCounters.hpp"
@@ -51,6 +53,11 @@ G1ConcurrentRefineThread::G1ConcurrentRefineThread(G1ConcurrentRefine* cr, uint 
 }
 
 void G1ConcurrentRefineThread::run_service() {
+
+  if (EnableFlexHeap) {
+    Universe::flexHeap()->get_cpu_usage()->read_gc_conc_refine_thr_cpu_time(_worker_id, true /*start*/);
+  }
+
   while (wait_for_completed_buffers()) {
     SuspendibleThreadSetJoiner sts_join;
     G1ConcurrentRefineStats active_stats_start = _refinement_stats;
@@ -58,10 +65,20 @@ void G1ConcurrentRefineThread::run_service() {
     while (!should_terminate()) {
       if (sts_join.should_yield()) {
         report_inactive("Paused", _refinement_stats - active_stats_start);
+
+        if (EnableFlexHeap) {
+          Universe::flexHeap()->get_cpu_usage()->read_gc_conc_refine_thr_cpu_time(_worker_id, false /*end*/);
+        }
+
         sts_join.yield();
         // Reset after yield rather than accumulating across yields, else a
         // very long running thread could overflow.
         active_stats_start = _refinement_stats;
+
+        if (EnableFlexHeap) {
+          Universe::flexHeap()->get_cpu_usage()->read_gc_conc_refine_thr_cpu_time(_worker_id, true /*start*/);
+        }
+
         report_active("Resumed");
       } else if (maybe_deactivate()) {
         break;

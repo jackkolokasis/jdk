@@ -47,6 +47,7 @@ JVM_OUTPUTDIR := $(JVM_VARIANT_OUTPUTDIR)/libjvm
 JVM_LDFLAGS += \
     $(SHARED_LIBRARY_FLAGS) \
     $(JVM_LDFLAGS_FEATURES) \
+    -L$(FLEX_EBPF_HOME)/lib -Wl,-rpath=$(FLEX_EBPF_HOME)/lib \
     $(EXTRA_LDFLAGS) \
     #
 
@@ -60,6 +61,7 @@ JVM_ASFLAGS += \
 
 JVM_LIBS += \
     $(JVM_LIBS_FEATURES) \
+    -lebpf_profiler \
     #
 
 # These files and directories are always excluded

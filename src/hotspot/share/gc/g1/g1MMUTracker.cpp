@@ -137,6 +137,7 @@ void G1MMUTracker::add_pause(double start, double end) {
 // pause can start right away, so return 0.
 double G1MMUTracker::when_sec(double current_timestamp, double pause_time) const {
   assert(pause_time > 0.0, "precondition");
+  // fprintf(stderr, "pause_time = %lf | max_gc_pause_time = %lf\n", pause_time, max_gc_time());
 
   // If the pause is over the maximum, just assume that it's the maximum.
   pause_time = MIN2(pause_time, max_gc_time());
@@ -144,6 +145,7 @@ double G1MMUTracker::when_sec(double current_timestamp, double pause_time) const
   double gc_budget = max_gc_time() - pause_time;
 
   double limit = current_timestamp + pause_time - _time_slice;
+  // fprintf(stderr, "limit = %lf | _time_slice = %lf\n", limit, _time_slice);
   // Iterate from newest to oldest.
   for (int i = 0; i < _no_entries; ++i) {
     int index = trim_index(_head_index - i);
@@ -159,6 +161,7 @@ double G1MMUTracker::when_sec(double current_timestamp, double pause_time) const
       // This timestamp captures the instant the budget is balanced (or used up).
       double balance_timestamp = elem->end_time() - gc_budget;
       assert(balance_timestamp >= limit, "inv");
+      // fprintf(stderr, "balance_timestamp = %lf | limit = %lf\n", balance_timestamp, limit);
       return balance_timestamp - limit;
     }
 

@@ -34,6 +34,7 @@
 #include "code/scopeDesc.hpp"
 #include "compiler/compileTask.hpp"
 #include "compiler/compilerThread.hpp"
+#include "gc/flexHeap/flexHeap.hpp"
 #include "gc/shared/oopStorage.hpp"
 #include "gc/shared/oopStorageSet.hpp"
 #include "gc/shared/tlab_globals.hpp"
@@ -667,6 +668,13 @@ JavaThread::JavaThread(ThreadFunction entry_point, size_t stack_sz, MemTag mem_t
   // by creator! Furthermore, the thread must also explicitly be added to the Threads list
   // by calling Threads:add. The reason why this is not done here, is because the thread
   // object must be fully initialized (take a look at JVM_Start)
+
+  if (EnableFlexHeap && thr_type == os::java_thread) {
+    OSThread *osthread = this->osthread();
+    if (osthread != nullptr) {
+      Universe::flexHeap()->record_mutator_thread_id(osthread->thread_id());
+    }
+  }
 }
 
 JavaThread::~JavaThread() {
