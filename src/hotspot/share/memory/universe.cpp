@@ -38,6 +38,7 @@
 #include "code/codeBehaviours.hpp"
 #include "code/codeCache.hpp"
 #include "compiler/oopMap.hpp"
+#include "gc/flexHeap/flexHeap.hpp"
 #include "gc/shared/collectedHeap.inline.hpp"
 #include "gc/shared/gcArguments.hpp"
 #include "gc/shared/gcConfig.hpp"
@@ -164,6 +165,7 @@ OopStorage*     Universe::_vm_weak = nullptr;
 OopStorage*     Universe::_vm_global = nullptr;
 
 CollectedHeap*  Universe::_collectedHeap = nullptr;
+FlexHeap *Universe::_flexHeap = nullptr;
 
 objArrayOop Universe::the_empty_class_array ()  {
   return (objArrayOop)_the_empty_class_array.resolve();
@@ -838,6 +840,11 @@ jint universe_init() {
 jint Universe::initialize_heap() {
   assert(_collectedHeap == nullptr, "Heap already created");
   _collectedHeap = GCConfig::arguments()->create_heap();
+
+  if (EnableFlexHeap) {
+    _flexHeap = new FlexHeap();
+    log_info(gc)("Initialize FlexHeap");
+  }
 
   log_info(gc)("Using %s", _collectedHeap->name());
   return _collectedHeap->initialize();
