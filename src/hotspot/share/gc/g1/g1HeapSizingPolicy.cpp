@@ -350,7 +350,6 @@ size_t G1HeapSizingPolicy::young_collection_expand_amount(double cpu_usage_delta
   double scale_factor = scale_cpu_usage_delta(cpu_usage_delta,
                                               min_scale_factor,
                                               max_scale_factor);
-  scale_factor = 0.8;
 
   size_t resize_bytes = MIN2(expand_bytes_via_pct, committed_bytes);
   
@@ -372,7 +371,6 @@ size_t G1HeapSizingPolicy::young_collection_shrink_amount(double cpu_usage_delta
   double scale_factor = scale_cpu_usage_delta(cpu_usage_delta,
                                               min_scale_factor,
                                               max_scale_factor);
-  scale_factor = 0.8;
 
   assert(scale_factor <= max_scale_factor, "must be");
 
