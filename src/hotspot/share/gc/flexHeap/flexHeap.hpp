@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define FH_HIST_SIZE 10
-#define FH_GC_HIST_SIZE 10
+#define FH_HIST_SIZE 5
+#define FH_GC_HIST_SIZE 5
 #define FH_NUM_ACTIONS 6
 #define FH_NUM_STATES 4
 #define FH_NAME_LEN 20
@@ -51,7 +51,7 @@ private:
   // Find the average of the array elements
   double calc_avg_time(double *arr, int size);
 
-  void resize_heap(size_t allocation_word_size, bool should_grow, bool is_remark_phase);
+  void resizing_step(size_t allocation_word_size, bool should_grow, bool is_remark_phase);
 
   // Set current time since last window
   void record_stw_exit();
@@ -70,6 +70,10 @@ public:
   void record_mutator_thread_id(pid_t tid);
 
   void dram_repartition(size_t allocation_word_size, bool is_remark_phase = false);
+
+  double get_cpu_usage_delta() { 
+    return state_machine->get_cpu_usage_delta();
+  }
 };
 
 #endif // SHARE_GC_FLEXHEAP_FLEXHEAP_HPP

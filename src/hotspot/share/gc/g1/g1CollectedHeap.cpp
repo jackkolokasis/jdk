@@ -29,6 +29,7 @@
 #include "code/codeCache.hpp"
 #include "code/icBuffer.hpp"
 #include "compiler/oopMap.hpp"
+#include "gc/flexHeap/flexHeap.hpp"
 #include "gc/g1/g1Allocator.inline.hpp"
 #include "gc/g1/g1Arguments.hpp"
 #include "gc/g1/g1BarrierSet.hpp"
@@ -100,6 +101,7 @@
 #include "memory/metaspaceUtils.hpp"
 #include "memory/resourceArea.hpp"
 #include "memory/universe.hpp"
+#include "memory/sharedDefines.h"
 #include "oops/access.inline.hpp"
 #include "oops/compressedOops.inline.hpp"
 #include "oops/oop.inline.hpp"
@@ -962,12 +964,53 @@ void G1CollectedHeap::resize_heap_if_necessary() {
   bool should_expand;
   size_t resize_amount = _heap_sizing_policy->full_collection_resize_amount(should_expand);
 
+#ifdef DEBUG_PRINTS_FLEXHEAP
+  tty->stamp(true);
+  tty->print("Before Committed: %lu | Used: %lu\n", capacity(), used());
+  tty->flush();
+#endif
+
   if (resize_amount == 0) {
+#ifdef DEBUG_PRINTS_FLEXHEAP
+    tty->stamp(true);
+    tty->print("After Committed: %lu | Used: %lu\n", capacity(), used());
+    tty->flush();
+#endif
     return;
-  } else if (should_expand) {
+  }
+
+  if (should_expand) {
     expand(resize_amount, _workers);
   } else {
     shrink(resize_amount);
+  }
+
+#ifdef DEBUG_PRINTS_FLEXHEAP
+  tty->stamp(true);
+  tty->print("After Committed: %lu | Used: %lu\n", capacity(), used());
+  tty->flush();
+#endif
+}
+
+void G1CollectedHeap::flexheap_resize_heap(size_t allocation_word_size, fh_actions cur_action) {
+  bool should_expand;
+  size_t resize_bytes = 0;
+
+  switch (cur_action) {
+    case FH_SHRINK_HEAP:
+      should_expand = false;
+      resize_bytes = _heap_sizing_policy->flexheap_resize_amount(allocation_word_size, should_expand);
+      break;
+    case FH_GROW_HEAP:
+      should_expand = true;
+      resize_bytes = _heap_sizing_policy->flexheap_resize_amount(allocation_word_size, should_expand);
+      break;
+    default:
+      break;
+  }
+
+  if (resize_bytes != 0) {
+    resize_heap(resize_bytes, should_expand);
   }
 }
 
@@ -1538,6 +1581,9 @@ void G1CollectedHeap::stop() {
   _cr->stop();
   _service_thread->stop();
   _cm_thread->stop();
+  if (EnableFlexHeap) {
+    delete(Universe::flexHeap());
+  }
 }
 
 void G1CollectedHeap::safepoint_synchronize_begin() {
@@ -2144,6 +2190,10 @@ size_t G1CollectedHeap::max_capacity() const {
   return max_regions() * HeapRegion::GrainBytes;
 }
 
+size_t G1CollectedHeap::min_capacity() const {
+  return MinHeapSize;
+}
+
 void G1CollectedHeap::prepare_for_verify() {
   _verifier->prepare_for_verify();
 }
@@ -2474,6 +2524,40 @@ void G1CollectedHeap::verify_after_young_collection(G1HeapVerifier::G1VerifyType
   phase_times()->record_verify_after_time_ms((Ticks::now() - start).seconds() * MILLIUNITS);
 }
 
+void G1CollectedHeap::resize_heap(size_t resize_bytes, bool should_expand) {
+  if (should_expand) {
+    expand(resize_bytes, _workers);
+  } else {
+    shrink(resize_bytes);
+    uncommit_regions_if_necessary();
+  }
+}
+  
+void G1CollectedHeap::resize_heap_after_young_collection(size_t allocation_word_size) {
+  Ticks start = Ticks::now();
+
+  bool should_expand;
+
+  size_t resize_bytes = _heap_sizing_policy->young_collection_resize_amount(should_expand, allocation_word_size);
+  
+#ifdef DEBUG_PRINTS_FLEXHEAP
+  tty->stamp(true);
+  tty->print("Before Committed: %lu | Used: %lu\n", capacity(), used());
+  tty->flush();
+#endif
+
+  if (resize_bytes != 0) {
+    resize_heap(resize_bytes, should_expand);
+  }
+
+#ifdef DEBUG_PRINTS_FLEXHEAP
+  tty->stamp(true);
+  tty->print("After Committed: %lu | Used: %lu\n", capacity(), used());
+  tty->flush();
+#endif
+  phase_times()->record_expand_heap_time((Ticks::now() - start).seconds() * 1000.0);
+}
+
 void G1CollectedHeap::expand_heap_after_young_collection(){
   size_t expand_bytes = _heap_sizing_policy->young_collection_expansion_amount();
   if (expand_bytes > 0) {
@@ -2562,6 +2646,16 @@ void G1CollectedHeap::do_collection_pause_at_safepoint_helper() {
   SvcGCMarker sgcm(SvcGCMarker::MINOR);
 
   GCTraceCPUTime tcpu(_gc_tracer_stw);
+
+  if (EnableFlexHeap) {
+    Universe::flexHeap()->record_stw_entry();
+
+    // TODO: Maybe here if we have to allow concurrent marking in the case of
+    // having consequent periodic GC.
+    if (gc_cause() == GCCause::_g1_periodic_collection) {
+      policy()->collector_state()->set_initiate_conc_mark_if_possible(false);
+    }
+  }
 
   _bytes_used_during_gc = 0;
 

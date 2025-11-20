@@ -25,6 +25,7 @@
 #ifndef SHARE_GC_G1_G1COLLECTEDHEAP_HPP
 #define SHARE_GC_G1_G1COLLECTEDHEAP_HPP
 
+#include "gc/flexHeap/flexEnum.h"
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BiasedArray.hpp"
 #include "gc/g1/g1CardTable.hpp"
@@ -478,6 +479,7 @@ private:
   HeapRegion* new_gc_alloc_region(size_t word_size, G1HeapRegionAttr dest, uint node_index);
   void retire_gc_alloc_region(HeapRegion* alloc_region,
                               size_t allocated_bytes, G1HeapRegionAttr dest);
+  void resize_heap(size_t resize_bytes, bool should_expand);
 
   // - if clear_all_soft_refs is true, all soft references should be
   //   cleared during the GC.
@@ -561,6 +563,8 @@ public:
   }
 
   void resize_heap_if_necessary();
+  void resize_heap_after_young_collection(size_t allocation_word_size);
+  void flexheap_resize_heap(size_t allocation_word_size, fh_actions cur_action);
 
   // Check if there is memory to uncommit and if so schedule a task to do it.
   void uncommit_regions_if_necessary();
@@ -1021,6 +1025,7 @@ public:
   bool try_collect(GCCause::Cause cause, const G1GCCounters& counters_before);
 
   void start_concurrent_gc_for_metadata_allocation(GCCause::Cause gc_cause);
+  bool last_gc_was_periodic() { return _gc_lastcause == GCCause::_g1_periodic_collection; }
 
   void remove_from_old_gen_sets(const uint old_regions_removed,
                                 const uint humongous_regions_removed);
@@ -1190,6 +1195,7 @@ public:
 
   // Print the maximum heap capacity.
   size_t max_capacity() const override;
+  size_t min_capacity() const;
 
   Tickspan time_since_last_collection() const { return Ticks::now() - _collection_pause_end; }
 
@@ -1202,6 +1208,7 @@ public:
   void set_region_short_lived_locked(HeapRegion* hr);
   // add appropriate methods for any other surv rate groups
 
+  inline uint eden_target_length() const;
   G1SurvivorRegions* survivor() { return &_survivor; }
 
   uint eden_regions_count() const { return _eden.length(); }

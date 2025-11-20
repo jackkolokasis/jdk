@@ -2,6 +2,8 @@
 #include "gc/g1/g1HeapSizingPolicy.hpp"
 #include "gc/g1/g1IHOPControl.hpp"
 #include "gc/g1/g1Policy.hpp"
+#include "gc/shared/gc_globals.hpp"
+#include "utilities/globalDefinitions.hpp"
 #include <math.h>
 
 #define BUFFER_SIZE 1024
@@ -72,8 +74,8 @@ bool LostComputeCyclesPolicy::analyze_gc_io_behavior(double gc_time_ms, double i
 
   is_ihop_low = marking_initiating_used_threshold == 0 ? false : ((double) cur_used_bytes / marking_initiating_used_threshold < 1.0);
 
-  double gc_diff_ratio = (prev_gc_time == 0) ? 1 : (gc_time_ms - prev_gc_time) / prev_gc_time;
-  double io_diff_ratio = (prev_io_time == 0) ? 1 : (io_time_ms - prev_io_time) / prev_io_time;
+  gc_diff_ratio = (prev_gc_time == 0) ? 1 : (gc_time_ms - prev_gc_time) / prev_gc_time;
+  io_diff_ratio = (prev_io_time == 0) ? 1 : (io_time_ms - prev_io_time) / prev_io_time;
 
   prev_gc_time = gc_time_ms;
   prev_io_time = io_time_ms;
@@ -81,12 +83,12 @@ bool LostComputeCyclesPolicy::analyze_gc_io_behavior(double gc_time_ms, double i
   bool overhead_increase = false;
 
   if (gc_diff_ratio < 0 && io_diff_ratio < 0) {
-    overhead_increase = false;
-  } else {
-    overhead_increase = (*cur_state == FHS_WAIT_SHRINK)
-      ? (gc_diff_ratio > io_diff_ratio)
-      : (io_diff_ratio > gc_diff_ratio);
+    return overhead_increase; 
   }
+
+  overhead_increase = (*cur_state == FHS_WAIT_SHRINK)
+    ? (gc_diff_ratio > io_diff_ratio)
+    : (io_diff_ratio > gc_diff_ratio);
 
   return overhead_increase;
 }
@@ -144,36 +146,15 @@ void LostComputeCyclesPolicy::state_wait_after_grow(fh_states *cur_state,
                                                     double io_time_ms,
                                                     double last_pause_time) {
 
-  // double relative_diff = fabs((gc_time_ms + io_time_ms) - delay_before_action) / delay_before_action;
-  // G1CollectedHeap* g1h = G1CollectedHeap::heap();
-  // size_t marking_initiating_used_threshold = g1h->policy()->get_ihop_control()->get_conc_mark_start_threshold();
-  // size_t cur_used_bytes = g1h->non_young_capacity_bytes();
-  // bool is_ihop_low = marking_initiating_used_threshold == 0 ? false : ((double) cur_used_bytes / marking_initiating_used_threshold < 1.0);
-
-  // double gc_diff_ratio = (prev_gc_time == 0) ? 1 : (gc_time_ms - prev_gc_time) / prev_gc_time;
-  // double io_diff_ratio = (prev_io_time == 0) ? 1 : (io_time_ms - prev_io_time) / prev_io_time;
-  // bool io_overhead_increase = (gc_diff_ratio < 0 && io_diff_ratio < 0) ? false : io_diff_ratio > gc_diff_ratio;
-
-  // prev_gc_time = gc_time_ms;
-  // prev_io_time = io_time_ms;
-  // static int stagnant_counter = 0;
   bool io_overhead_increase = analyze_gc_io_behavior(gc_time_ms, io_time_ms, cur_state);
-  bool no_free_regions = (double)(g1h->num_free_regions() * G1HeapRegion::GrainBytes) / g1h->capacity() <= 0.05;
+  bool no_free_regions = (double)(g1h->num_free_regions() * HeapRegion::GrainBytes) / g1h->capacity() <= 0.05;
 
   if (relative_diff <= 0.05) {
-    // stagnant_counter++;
-    // bool under_stagnant_limit = stagnant_counter < 10;
-    // *cur_state = under_stagnant_limit ? FHS_WAIT_GROW : FHS_WAIT_SHRINK;
-    // *cur_action = under_stagnant_limit ? FH_NO_ACTION : FH_SHRINK_HEAP;
-    // stagnant_counter = under_stagnant_limit ? stagnant_counter : 0;
-
     *cur_state = FHS_WAIT_GROW;
     *cur_action = FH_NO_ACTION;
     delay_before_action = gc_time_ms + io_time_ms;
     return;
   }
-  // reset stagnat counter
-  // stagnant_counter = 0;
 
   bool overall_overhead_increase = (gc_time_ms + io_time_ms) > delay_before_action;
   delay_before_action = gc_time_ms + io_time_ms;
@@ -187,7 +168,8 @@ void LostComputeCyclesPolicy::state_wait_after_grow(fh_states *cur_state,
 
   *cur_state = FHS_WAIT_GROW;
   bool under_max_capacity = g1h->capacity() < g1h->max_capacity();
-  *cur_action = (no_free_regions && under_max_capacity) ? FH_GROW_HEAP : FH_WAIT_AFTER_GROW;
+  // *cur_action = (no_free_regions && under_max_capacity) ? FH_GROW_HEAP : FH_WAIT_AFTER_GROW;
+  *cur_action = (!is_ihop_low && under_max_capacity) ? FH_GROW_HEAP : FH_WAIT_AFTER_GROW;
   last_action = *cur_action;
 }
 
@@ -197,38 +179,15 @@ void LostComputeCyclesPolicy::state_wait_after_shrink(fh_states *cur_state,
                                                       double io_time_ms,
                                                       double last_pause_time) {
 
-  // double relative_diff = fabs((gc_time_ms + io_time_ms) - delay_before_action) / delay_before_action;
-  // G1CollectedHeap* g1h = G1CollectedHeap::heap();
-
-  // size_t marking_initiating_used_threshold = g1h->policy()->get_ihop_control()->get_conc_mark_start_threshold();
-  // size_t cur_used_bytes = g1h->non_young_capacity_bytes();
-
-  // bool is_ihop_low = marking_initiating_used_threshold == 0 ? false : ((double) cur_used_bytes / marking_initiating_used_threshold < 1.0);
-
-  // double gc_diff_ratio = (prev_gc_time == 0) ? 1 : (gc_time_ms - prev_gc_time) / prev_gc_time;
-  // double io_diff_ratio = (prev_io_time == 0) ? 1 : (io_time_ms - prev_io_time) / prev_io_time;
-  // bool gc_overhead_increase = (gc_diff_ratio < 0 && io_diff_ratio < 0) ? false : gc_diff_ratio > io_diff_ratio;
-
-  // prev_gc_time = gc_time_ms;
-  // prev_io_time = io_time_ms;
-  // static int stagnant_counter = 0;
   bool gc_overhead_increase = analyze_gc_io_behavior(gc_time_ms, io_time_ms, cur_state);
-  bool no_free_regions = (double)(g1h->num_free_regions() * G1HeapRegion::GrainBytes) / g1h->capacity() <= 0.05;
+  bool no_free_regions = (double)(g1h->num_free_regions() * HeapRegion::GrainBytes) / g1h->capacity() <= 0.05;
 
   if (relative_diff <= 0.05) {
-    // stagnant_counter++;
-    // bool under_stagnant_limit = stagnant_counter < 10;
-    // *cur_state = under_stagnant_limit ? FHS_WAIT_SHRINK : FHS_WAIT_GROW;
-    // *cur_action = under_stagnant_limit ? FH_NO_ACTION : FH_GROW_HEAP;
-    // stagnant_counter = under_stagnant_limit ? stagnant_counter : 0;
     *cur_state = FHS_WAIT_SHRINK;
     *cur_action = FH_NO_ACTION;
     delay_before_action = gc_time_ms + io_time_ms;
     return;
   }
-
-  // reset stagnat counter
-  // stagnant_counter = 0;
 
   bool overall_overhead_increase = (gc_time_ms + io_time_ms) > delay_before_action;
   delay_before_action = gc_time_ms + io_time_ms;
@@ -247,4 +206,8 @@ void LostComputeCyclesPolicy::state_wait_after_shrink(fh_states *cur_state,
   *cur_state = FHS_WAIT_SHRINK;
   *cur_action = ioslack ? FH_IOSLACK : FH_SHRINK_HEAP;
   last_action = *cur_action;
+}
+
+double LostComputeCyclesPolicy::get_cpu_usage_delta() {
+  return relative_diff;
 }

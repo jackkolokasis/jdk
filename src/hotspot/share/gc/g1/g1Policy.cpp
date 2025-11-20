@@ -108,6 +108,10 @@ void G1Policy::init(G1CollectedHeap* g1h, G1CollectionSet* collection_set) {
   _collection_set->start_incremental_building();
 }
 
+G1IHOPControl* G1Policy::get_ihop_control() const {
+  return _ihop_control;
+}
+
 void G1Policy::record_young_gc_pause_start() {
   phase_times()->record_gc_pause_start();
 }

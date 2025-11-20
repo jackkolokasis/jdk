@@ -26,6 +26,7 @@
 #define SHARE_GC_G1_G1HEAPSIZINGPOLICY_HPP
 
 #include "memory/allocation.hpp"
+#include "utilities/numberSeq.hpp"
 
 class G1Analytics;
 class G1CollectedHeap;
@@ -39,15 +40,30 @@ class G1HeapSizingPolicy: public CHeapObj<mtGC> {
   const G1CollectedHeap* _g1h;
   const G1Analytics* _analytics;
 
+  TruncatedSeq _recent_cpu_usage_deltas;
   const uint _num_prev_pauses_for_heuristics;
   // Ratio check data for determining if heap growth is necessary.
   uint _ratio_over_threshold_count;
   double _ratio_over_threshold_sum;
   uint _pauses_since_start;
+  uint _long_term_count;
+  int _gc_cpu_usage_deviation_counter;
+  // Recent GC CPU usage deviations relative to the gc_cpu_usage_target
 
+
+
+  // Clear GC CPU usage tracking data used by young_collection_resize_amount().
+  void reset_cpu_usage_tracking_data();
+  // Decay (move towards "no changes") GC CPU usage tracking data.
+  void decay_cpu_usage_tracking_data();
   // Scale "full" gc pause time threshold with heap size as we want to resize more
   // eagerly at small heap sizes.
   double scale_with_heap(double pause_time_threshold);
+  // Scale the cpu usage delta depending on the relative difference from the target gc_cpu_usage.
+  double scale_cpu_usage_delta(double cpu_usage_delta, double min_scale_factor, double max_scale_factor) const;
+  
+  size_t young_collection_expand_amount(double cpu_usage_delta) const;
+  size_t young_collection_shrink_amount(double cpu_usage_delta, size_t allocation_word_size) const;
 
   G1HeapSizingPolicy(const G1CollectedHeap* g1h, const G1Analytics* analytics);
 public:
@@ -55,10 +71,17 @@ public:
   // If an expansion would be appropriate, because recent GC overhead had
   // exceeded the desired limit, return an amount to expand by.
   size_t young_collection_expansion_amount();
+  // Return by how many bytes the heap should be changed based on recent GC CPU
+  // usage after young collection. If expand is set, the heap should be expanded,
+  // otherwise shrunk.
+  size_t young_collection_resize_amount(bool& expand, size_t allocation_word_size);
 
   // Returns the amount of bytes to resize the heap; if expand is set, the heap
   // should by expanded by that amount, shrunk otherwise.
   size_t full_collection_resize_amount(bool& expand);
+   // Return by how many bytes the heap should be expand based on recent GC CPU
+  // usage and I/O wait time after each STW GC..
+  size_t flexheap_resize_amount(size_t allocation_word_size, bool should_expand);
   // Clear ratio tracking data used by expansion_amount().
   void clear_ratio_check_data();
 

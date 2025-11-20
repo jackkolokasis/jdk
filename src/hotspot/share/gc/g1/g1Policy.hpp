@@ -138,6 +138,8 @@ public:
 
   double predict_base_time_ms(size_t pending_cards) const;
 
+  G1IHOPControl* get_ihop_control() const;
+
 private:
   // Base time contains handling remembered sets and constant other time of the
   // whole young gen, refinement buffers, and copying survivors.

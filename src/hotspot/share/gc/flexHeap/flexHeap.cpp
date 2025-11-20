@@ -1,7 +1,9 @@
 #include "gc/g1/g1CollectedHeap.hpp"
 #include "gc/flexHeap/flexHeap.hpp"
 #include "gc/shared/collectedHeap.hpp"
+#include "gc/shared/gc_globals.hpp"
 #include "memory/universe.hpp"
+#include "memory/sharedDefines.h"
 #include <ioWait.hpp>
 
 #define BUFFER_SIZE 1024
@@ -67,10 +69,11 @@ void FlexHeap::init_state_actions_names() {
 void FlexHeap::print_state_action(double avg_gc_time_ms, double avg_io_time_ms) {
 
   tty->stamp(true);
-  tty->print(",%lf", avg_gc_time_ms);
-  tty->print(",%lf", avg_io_time_ms);
-  tty->print(",%s", state_name[cur_state]);
-  tty->print(",%s", action_name[cur_action]);
+  tty->print(",GC: %lf", avg_gc_time_ms);
+  tty->print(",I/O: %lf", avg_io_time_ms);
+  tty->print(",STATE: %s", state_name[cur_state]);
+  tty->print(",ACTION: %s\n", action_name[cur_action]);
+  tty->flush();
 }
 
 // Find the average of the array elements
@@ -84,10 +87,12 @@ double FlexHeap::calc_avg_time(double *arr, int size) {
   return (double) sum / size;
 }
 
-void FlexHeap::resize_heap(size_t allocation_word_size, bool should_grow, bool is_remark_phase) {
+void FlexHeap::resizing_step(size_t allocation_word_size, bool should_grow, bool is_remark_phase) {
   G1CollectedHeap* g1h = G1CollectedHeap::heap();
   g1h->flexheap_resize_heap(allocation_word_size, cur_action);
 
+  // We did this to align our design based on the previous versions of
+  // G1 heap resizing mechanism
   if (should_grow && is_remark_phase) {
     g1h->uncommit_regions_if_necessary();
   }
@@ -105,27 +110,31 @@ void FlexHeap::dram_repartition(size_t allocation_word_size, bool is_remark_phas
   avg_gc_time_ms = calc_avg_time(hist_gc_time, FH_GC_HIST_SIZE);
 
   state_machine->fsm(&cur_state, &cur_action, avg_gc_time_ms, avg_io_time_ms, cpu_usage->get_last_pause_time());
-// #ifdef DEBUG_PRINTS_FLEXHEAP
-  // print_state_action(avg_gc_time_ms, avg_io_time_ms);
-// #endif
+#ifdef DEBUG_PRINTS_FLEXHEAP
+  print_state_action(avg_gc_time_ms, avg_io_time_ms);
+  tty->stamp(true);
+  tty->print("Before Committed: %lu | Used: %lu\n", G1CollectedHeap::heap()->capacity(), G1CollectedHeap::heap()->used());
+  tty->flush();
+#endif
 
   switch (cur_action) {
     case FH_SHRINK_HEAP:
-      resize_heap(allocation_word_size, false /* shrink heap */, is_remark_phase);
+      resizing_step(allocation_word_size, false /* shrink heap */, is_remark_phase);
       break;
     case FH_GROW_HEAP:
-      resize_heap(allocation_word_size, true /* grow heap */, is_remark_phase);
+      resizing_step(allocation_word_size, true /* grow heap */, is_remark_phase);
       break;
     case FH_NO_ACTION:
     case FH_IOSLACK:
     case FH_WAIT_AFTER_GROW:
     case FH_CONTINUE:
-// #ifdef DEBUG_PRINTS_FLEXHEAP
-    // tty->print("\n");
-    // tty->flush();
-// #endif
       break;
   }
+#ifdef DEBUG_PRINTS_FLEXHEAP
+  tty->stamp(true);
+  tty->print("After Committed: %lu | Used: %lu\n", G1CollectedHeap::heap()->capacity(), G1CollectedHeap::heap()->used());
+  tty->flush();
+#endif
   prev_action = cur_action;
   record_stw_exit();
 }
