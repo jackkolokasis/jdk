@@ -211,7 +211,6 @@ function run_clean_make() {
 
 function export_env_vars() {
   detect_platform
-  export JAVA_HOME="/home1/public/kolokasis/github/latest_version/flexheap/jdk-24.0.2-full"
 
   export FLEX_EBPF_HOME=${PROJECT_DIR}/ebpf
   export LIBRARY_PATH=${FLEX_EBPF_HOME}/lib:$LIBRARY_PATH
